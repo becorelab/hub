@@ -413,7 +413,7 @@ a.app-link{
   <h2>BECORE LAB</h2>
   <p>비밀번호를 입력해주세요</p>
   <input class="lock-input" id="lockInput" type="password" placeholder="Password" autofocus
-    onkeydown="if(event.key==='Enter')unlock()"/>
+    onkeypress="if(event.key==='Enter')unlock()"/>
   <button class="lock-btn" onclick="unlock()">접속</button>
   <div class="lock-error" id="lockError"></div>
 </div>
@@ -688,15 +688,10 @@ a.app-link{
 
 <script>
 // Lock
-const PASS_HASH='b013461d2c4ba6d2e178ac76e1c358bb1d44dc2f49e51d086c959a2225f16af8';
-async function sha256(str){
-  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-async function unlock(){
+const _k=[98,101,99,111,114,101,108,97,98,48,51,48,57];
+function unlock(){
   const input=document.getElementById('lockInput').value;
-  const hash=await sha256(input);
-  if(hash===PASS_HASH){
+  if(input===_k.map(c=>String.fromCharCode(c)).join('')){
     sessionStorage.setItem('bc_auth','1');
     document.getElementById('lockScreen').style.display='none';
     document.getElementById('mainHub').style.display='block';
