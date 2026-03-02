@@ -615,7 +615,17 @@ function detectOhouse(wb) {
   return getSheets(wb).includes('정산내역_상세');
 }
 function detectCafe24(wb) {
-  return getSheets(wb).includes('원본') && !getSheets(wb).includes('결제정산 - 일별상세');
+  // 카페24 로우 데이터: 시트명이 자동생성(becorelab2_xxx)이므로 컬럼 헤더로 감지
+  const sheets = getSheets(wb);
+  // 기존 가공 파일 ('원본' 시트)
+  if (sheets.includes('원본') && !sheets.includes('결제정산 - 일별상세')) return true;
+  // 로우 데이터: 첫 시트의 헤더에 카페24 고유 컬럼 확인
+  const firstSheet = wb.Sheets[sheets[0]];
+  if (!firstSheet) return false;
+  const rows = XLSX.utils.sheet_to_json(firstSheet, {header:1});
+  if (rows.length < 1) return false;
+  const headers = rows[0].map(h => String(h||''));
+  return headers.includes('주문상품명(옵션포함)') && headers.includes('품목별 결제금액') && headers.includes('품목별 주문번호');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -848,34 +858,106 @@ function parseOhouse(wb) {
   return { results, unmapped };
 }
 
-// 카페24
+// 카페24 — 매뉴얼 기반 전면 재작성
 function parseCafe24(wb) {
   const nameMap = buildNameMap(wb, ['품명리스트', '품명리스트추가']);
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets['원본'], {header:1});
+
+  // 시트 찾기: '원본' 또는 첫 번째 시트(로우 데이터)
+  const sheets = getSheets(wb);
+  const sheetName = sheets.includes('원본') ? '원본' : sheets[0];
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1});
+  if (rows.length < 2) return { results:[], unmapped:[] };
+
+  // 헤더 기반 컬럼 인덱스 매핑 (컬럼 순서 변해도 동작)
+  const hdr = rows[0].map(h => String(h||'').trim());
+  const col = (name) => hdr.indexOf(name);
+
+  const C = {
+    취소구분:       col('취소구분'),
+    주문상태:       col('주문 상태') >= 0 ? col('주문 상태') : col('주문상태'),
+    주문번호:       col('주문번호'),
+    주문상품명:     col('주문상품명'),
+    주문상품명옵션: col('주문상품명(옵션포함)'),
+    상품옵션:       col('상품옵션'),
+    수량:           col('수량'),
+    옵션판매가:     col('옵션+판매가'),
+    판매가:         col('판매가'),
+    품목별결제금액: col('품목별 결제금액'),
+    회원등급추가할인: col('회원등급 추가할인금액'),
+    쿠폰할인최초:   col('쿠폰 할인금액(최초)'),
+    적립금최종:     col('사용한 적립금액(최종)') >= 0 ? col('사용한 적립금액(최종)') : col('사용한 적립금액(최초)'),
+    앱상품할인최종: col('앱 상품할인 금액(최종)'),
+    상품구매금액:   col('상품구매금액'),
+  };
+
   const results = [], unmapped = [];
   const unmappedKeys = new Set();
-  const DONE_STATUSES = ['결제완료', '배송완료', '배송중', '배송준비중', '구매확정'];
+
+  // 중복 주문번호 할인 추적 (매뉴얼 5단계)
+  const seenOrderDiscounts = new Set();
 
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
-    const status = String(r[46] || '');
-    if (!DONE_STATUSES.some(s => status.includes(s))) continue;
 
-    const prodName = String(r[49] || '');
-    const option = String(r[33] || '');
-    const qty = Number(r[35] || 0);
-    const settlement = Number(r[67] || 0); // 품목별 결제금액
+    // ── 매뉴얼 2단계: 취소/반품 필터링 ──
+    const cancelType = String(r[C.취소구분] || '').trim();
+    if (cancelType === '취소' || cancelType === '부분취소') continue;
 
-    const key = prodName + option;
-    let finalName = nameMap[key] || nameMap[prodName] || null;
+    const orderStatus = String(r[C.주문상태] || '').trim();
+    if (orderStatus.includes('반품완료') || orderStatus.includes('취소')) continue;
 
-    if (!finalName && prodName && !unmappedKeys.has(key)) {
+    // 유효 주문상태만 허용
+    const VALID = ['결제완료','배송완료','배송중','배송준비중','구매확정','발주확인','배송대기'];
+    if (!VALID.some(s => orderStatus.includes(s))) continue;
+
+    // ── 매뉴얼 3단계: 상품명 가공 + 샘플 제외 ──
+    const prodNameOpt = String(r[C.주문상품명옵션] || r[C.주문상품명] || '').trim();
+    const prodName = String(r[C.주문상품명] || '').trim();
+    const option = String(r[C.상품옵션] || '').trim();
+
+    if (!prodName) continue;
+    // 샘플 제외 (★ 매뉴얼 특기사항)
+    if (prodNameOpt.includes('샘플') || prodName.includes('샘플')) continue;
+
+    const qty = Number(r[C.수량] || 0);
+    if (qty <= 0) continue;
+
+    // ── 매뉴얼 4단계: 총액 = 수량 × (옵션+판매가) - 회원등급 추가할인금액 ──
+    const unitPrice = Number(r[C.옵션판매가] || r[C.판매가] || 0);
+    const memberDiscount = Number(r[C.회원등급추가할인] || 0);
+    const totalAmount = qty * unitPrice - memberDiscount;
+
+    // ── 매뉴얼 5단계: 중복 주문번호 할인 처리 ──
+    const orderNo = String(r[C.주문번호] || '');
+    let couponDiscount = 0, pointDiscount = 0, appDiscount = 0;
+
+    if (!seenOrderDiscounts.has(orderNo)) {
+      seenOrderDiscounts.add(orderNo);
+      couponDiscount = Number(r[C.쿠폰할인최초] || 0);
+      pointDiscount = Number(r[C.적립금최종] || 0);
+      appDiscount = Number(r[C.앱상품할인최종] || 0);
+    }
+    // 중복 주문번호는 할인 0으로 처리 (이미 첫 행에서 반영)
+
+    // ── 매뉴얼 6단계: 최종 정산금액 ──
+    const settlement = totalAmount - couponDiscount - pointDiscount - appDiscount;
+
+    // 최종상품명 매핑
+    const key = prodNameOpt || (prodName + option);
+    let finalName = nameMap[key] || nameMap[prodName] || nameMap[prodNameOpt] || null;
+
+    if (!finalName && !unmappedKeys.has(key)) {
       unmappedKeys.add(key);
       unmapped.push({ key, prodName, option, qty, settlement, count: 1 });
     }
-    if (prodName) {
-      results.push({ 최종상품명: finalName || key, 수량: qty, 정산금액: settlement, 매출액: settlement, 매핑: !!finalName });
-    }
+
+    results.push({
+      최종상품명: finalName || key,
+      수량: qty,
+      정산금액: settlement,
+      매출액: totalAmount,
+      매핑: !!finalName
+    });
   }
   return { results, unmapped };
 }
