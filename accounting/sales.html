@@ -899,33 +899,26 @@ function parseCafe24(wb) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
 
-    // ── 매뉴얼 2단계: 취소/반품 필터링 ──
-    const cancelType = String(r[C.취소구분] || '').trim();
-    if (cancelType === '취소' || cancelType === '부분취소') continue;
+    // ── 매뉴얼 2단계: 취소 필터링 ──
+    // 카페24 상태값에 공백 포함 ('배송 완료', '취소 완료' 등) → 공백 제거 후 비교
+    const cancelType = String(r[C.취소구분] || '').replace(/\s/g,'');
+    // 취소구분이 '취소안함'이 아니면 제외 (취소, 부분취소)
+    if (cancelType !== '' && cancelType !== '취소안함') continue;
 
-    const orderStatus = String(r[C.주문상태] || '').trim();
-    if (orderStatus.includes('반품완료') || orderStatus.includes('취소')) continue;
-
-    // 유효 주문상태만 허용
-    const VALID = ['결제완료','배송완료','배송중','배송준비중','구매확정','발주확인','배송대기'];
-    if (!VALID.some(s => orderStatus.includes(s))) continue;
-
-    // ── 매뉴얼 3단계: 상품명 가공 + 샘플 제외 ──
+    // ── 매뉴얼 3단계: 상품명 가공 ──
     const prodNameOpt = String(r[C.주문상품명옵션] || r[C.주문상품명] || '').trim();
     const prodName = String(r[C.주문상품명] || '').trim();
     const option = String(r[C.상품옵션] || '').trim();
 
     if (!prodName) continue;
-    // 샘플 제외 (★ 매뉴얼 특기사항)
-    if (prodNameOpt.includes('샘플') || prodName.includes('샘플')) continue;
 
     const qty = Number(r[C.수량] || 0);
     if (qty <= 0) continue;
 
-    // ── 매뉴얼 4단계: 총액 = 수량 × (옵션+판매가) - 회원등급 추가할인금액 ──
+    // ── 매뉴얼 4단계: 결제총액 = 수량 × (옵션+판매가) ──
+    // 샘플/무료 상품은 옵션+판매가=0 → 자동으로 결제총액=0
     const unitPrice = Number(r[C.옵션판매가] || r[C.판매가] || 0);
-    const memberDiscount = Number(r[C.회원등급추가할인] || 0);
-    const totalAmount = qty * unitPrice - memberDiscount;
+    const totalAmount = qty * unitPrice;
 
     // ── 매뉴얼 5단계: 중복 주문번호 할인 처리 ──
     const orderNo = String(r[C.주문번호] || '');
@@ -937,12 +930,11 @@ function parseCafe24(wb) {
       pointDiscount = Number(r[C.적립금최종] || 0);
       appDiscount = Number(r[C.앱상품할인최종] || 0);
     }
-    // 중복 주문번호는 할인 0으로 처리 (이미 첫 행에서 반영)
 
     // ── 매뉴얼 6단계: 최종 정산금액 ──
     const settlement = totalAmount - couponDiscount - pointDiscount - appDiscount;
 
-    // 최종상품명 매핑
+    // 최종상품명 매핑 (품명리스트 VLOOKUP 재현)
     const key = prodNameOpt || (prodName + option);
     let finalName = nameMap[key] || nameMap[prodName] || nameMap[prodNameOpt] || null;
 
