@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>iLBiA 매출 정산 대시보드</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/jspreadsheet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsuites@5/dist/jsuites.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jspreadsheet-ce@4/dist/jspreadsheet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsuites@5/dist/jsuites.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Spoqa+Han+Sans+Neo:wght@300;400;500;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Noto Sans KR',sans-serif;background:#0d1117;color:#e2e8f0;font-size:14px;min-height:100vh;}
+body{font-family:'Pretendard','Spoqa Han Sans Neo',sans-serif;background:#0d1117;color:#e2e8f0;font-size:14px;min-height:100vh;}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#1a1d27}
 ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
@@ -146,6 +151,38 @@ tr:hover td{background:#1a1d2788;}
 .toast.success{border-color:#10b98155;color:#10b981;}
 .toast.error{border-color:#ef444455;color:#ef4444;}
 .toast.warn{border-color:#f59e0b55;color:#f59e0b;}
+
+/* JSPREADSHEET DARK THEME OVERRIDE */
+.jexcel_container{background:#161b27 !important;border:1px solid #1e293b !important;border-radius:6px !important;overflow:hidden;}
+.jexcel{background:#0d1117 !important;color:#e2e8f0 !important;font-family:'Pretendard','Spoqa Han Sans Neo',sans-serif !important;font-size:.8rem !important;}
+.jexcel td{background:#0d1117 !important;color:#e2e8f0 !important;border-color:#1e293b !important;padding:6px 10px !important;}
+.jexcel td.highlight{background:#0f766e22 !important;}
+.jexcel td.selected{background:#0f766e33 !important;border:1px solid #0f766e !important;}
+.jexcel thead td{background:#1a1d27 !important;color:#64748b !important;font-weight:600 !important;font-size:.75rem !important;border-color:#1e293b !important;}
+.jexcel tbody tr td:first-child{background:#1a1d27 !important;color:#475569 !important;}
+.jexcel_toolbar{background:#10151f !important;border-color:#1e293b !important;}
+.jexcel_toolbar i{color:#94a3b8 !important;}
+.jexcel_pagination{background:#10151f !important;color:#94a3b8 !important;border-color:#1e293b !important;}
+.jexcel .jexcel_content{scrollbar-color:#334155 #0d1117;}
+.jexcel_container .jexcel_content::-webkit-scrollbar{width:6px;height:6px;}
+.jexcel_container .jexcel_content::-webkit-scrollbar-track{background:#0d1117;}
+.jexcel_container .jexcel_content::-webkit-scrollbar-thumb{background:#334155;border-radius:3px;}
+.jexcel_contextmenu{background:#161b27 !important;border:1px solid #334155 !important;color:#e2e8f0 !important;}
+.jexcel_contextmenu a:hover{background:#1e293b !important;}
+.jexcel_filter{background:#0d1117 !important;border-color:#334155 !important;color:#e2e8f0 !important;}
+
+/* SPREADSHEET MODE TOGGLE */
+.view-toggle{display:flex;gap:4px;margin-bottom:12px;}
+.view-toggle button{padding:5px 12px;border-radius:4px;font-size:.75rem;font-weight:600;border:1px solid #1e293b;background:#0d1117;color:#64748b;cursor:pointer;font-family:inherit;transition:all .15s;}
+.view-toggle button.active{background:#0f766e;color:#fff;border-color:#0f766e;}
+.view-toggle button:hover:not(.active){background:#1e293b;color:#94a3b8;}
+
+/* SKILL BADGES */
+.skill-badges{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;}
+.skill-badge{font-size:.68rem;padding:3px 8px;border-radius:3px;font-weight:500;}
+.skill-badge.excel{background:#21754522;color:#217545;border:1px solid #21754533;}
+.skill-badge.edit{background:#0f766e22;color:#0f766e;border:1px solid #0f766e33;}
+.skill-badge.formula{background:#7c3aed22;color:#7c3aed;border:1px solid #7c3aed33;}
 </style>
 </head>
 <body>
@@ -237,18 +274,32 @@ tr:hover td{background:#1a1d2788;}
     <!-- STEP 4: 결과 -->
     <div class="consolidated" id="resultSection" style="display:none;">
       <h2>📈 정산 종합 결과 <span style="font-size:.75rem;color:#64748b;font-weight:400;" id="resultMonth"></span></h2>
+      <div class="skill-badges">
+        <span class="skill-badge excel">ExcelJS 서식 내보내기</span>
+        <span class="skill-badge edit">Jspreadsheet 인라인 편집</span>
+        <span class="skill-badge formula">수식 · 복붙 · Undo/Redo</span>
+      </div>
 
       <div class="sum-cards" id="sumCards"></div>
 
       <!-- 채널별 탭 -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;" id="resultTabs"></div>
 
+      <!-- 뷰 모드 토글 -->
+      <div class="view-toggle">
+        <button class="active" id="viewTable" onclick="setViewMode('table')">📋 테이블</button>
+        <button id="viewSheet" onclick="setViewMode('sheet')">📊 스프레드시트</button>
+      </div>
+
       <!-- 결과 테이블 -->
       <div id="resultTableWrap"></div>
+      <!-- 스프레드시트 뷰 -->
+      <div id="spreadsheetWrap" style="display:none;"></div>
 
       <!-- 다운로드 -->
-      <div style="margin-top:16px;display:flex;gap:8px;">
-        <button class="btn btn-success" onclick="downloadExcel()">⬇️ Excel 다운로드</button>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-success" onclick="downloadExcelStyled()">⬇️ Excel 다운로드 (서식 포함)</button>
+        <button class="btn btn-secondary" onclick="downloadExcel()">⬇️ Excel 다운로드 (기본)</button>
         <button class="btn btn-secondary" onclick="resetAll()">🔄 초기화</button>
       </div>
     </div>
@@ -1031,7 +1082,270 @@ function focusChannel(channelId) {
 }
 
 // ═══════════════════════════════════════════════════════
-// EXCEL EXPORT
+// VIEW MODE TOGGLE (Table ↔ Spreadsheet)
+// ═══════════════════════════════════════════════════════
+let currentViewMode = 'table';
+let spreadsheetInstance = null;
+
+function setViewMode(mode) {
+  currentViewMode = mode;
+  document.getElementById('viewTable').classList.toggle('active', mode === 'table');
+  document.getElementById('viewSheet').classList.toggle('active', mode === 'sheet');
+  document.getElementById('resultTableWrap').style.display = mode === 'table' ? 'block' : 'none';
+  document.getElementById('spreadsheetWrap').style.display = mode === 'sheet' ? 'block' : 'none';
+  if (mode === 'sheet') renderSpreadsheet();
+}
+
+// ═══════════════════════════════════════════════════════
+// JSPREADSHEET RENDERING
+// ═══════════════════════════════════════════════════════
+function getDisplayData() {
+  let data = [];
+  if (state.currentTab === 'all') {
+    const map = {};
+    for (const ch of Object.values(state.channels)) {
+      for (const r of ch.aggregated || []) {
+        if (!map[r.최종상품명]) map[r.최종상품명] = { 최종상품명:r.최종상품명, 수량:0, 정산금액:0, 매출액:0, 원가단가:r.원가단가||0, 원가합계:0, 이익:0, 매핑:r.매핑 };
+        map[r.최종상품명].수량 += r.수량;
+        map[r.최종상품명].정산금액 += r.정산금액;
+        map[r.최종상품명].매출액 += r.매출액;
+        map[r.최종상품명].원가합계 += r.원가합계 || 0;
+        map[r.최종상품명].이익 += r.이익 || 0;
+        if (!r.매핑) map[r.최종상품명].매핑 = false;
+      }
+    }
+    data = Object.values(map).sort((a,b) => b.정산금액-a.정산금액);
+    for (const d of data) d.이익률 = d.정산금액 > 0 ? d.이익 / d.정산금액 : 0;
+  } else {
+    const ch = Object.values(state.channels).find(c => c.name === state.currentTab);
+    data = ch ? (ch.aggregated || []) : [];
+  }
+  return data;
+}
+
+function renderSpreadsheet() {
+  const wrap = document.getElementById('spreadsheetWrap');
+  wrap.innerHTML = '';
+  if (spreadsheetInstance) { spreadsheetInstance = null; }
+
+  const data = getDisplayData();
+  if (data.length === 0) {
+    wrap.innerHTML = '<p style="color:#64748b;font-size:.82rem;padding:20px;">데이터가 없습니다.</p>';
+    return;
+  }
+
+  const sheetData = data.map(r => [
+    r.최종상품명,
+    r.수량,
+    Math.round(r.정산금액),
+    r.원가단가 || 0,
+    Math.round(r.원가합계 || 0),
+    Math.round(r.이익 || 0),
+    r.이익률 !== undefined ? parseFloat((r.이익률 * 100).toFixed(1)) : 0
+  ]);
+
+  // 합계 행 추가
+  const totals = ['합계',
+    data.reduce((s,r) => s + r.수량, 0),
+    Math.round(data.reduce((s,r) => s + r.정산금액, 0)),
+    '',
+    Math.round(data.reduce((s,r) => s + (r.원가합계||0), 0)),
+    Math.round(data.reduce((s,r) => s + (r.이익||0), 0)),
+    ''
+  ];
+  sheetData.push(totals);
+
+  const div = document.createElement('div');
+  div.id = 'jspreadsheet_result';
+  wrap.appendChild(div);
+
+  spreadsheetInstance = jspreadsheet(div, {
+    data: sheetData,
+    columns: [
+      { type:'text', title:'최종상품명', width:200 },
+      { type:'numeric', title:'수량', width:80, mask:'#,##0' },
+      { type:'numeric', title:'정산금액', width:130, mask:'#,##0' },
+      { type:'numeric', title:'원가/개', width:100, mask:'#,##0' },
+      { type:'numeric', title:'원가합계', width:130, mask:'#,##0' },
+      { type:'numeric', title:'이익', width:130, mask:'#,##0' },
+      { type:'numeric', title:'이익률(%)', width:90, mask:'#,##0.0' },
+    ],
+    tableOverflow: true,
+    tableWidth: '100%',
+    tableHeight: '400px',
+    allowInsertRow: true,
+    allowDeleteRow: true,
+    allowInsertColumn: false,
+    allowDeleteColumn: false,
+    columnSorting: true,
+    search: true,
+    pagination: data.length > 50 ? 50 : 0,
+    text: {
+      noRecordsFound: '데이터 없음',
+      showingPage: '{0}/{1} 페이지',
+      search: '검색...',
+      insertANewRowBefore: '위에 행 삽입',
+      insertANewRowAfter: '아래에 행 삽입',
+      deleteSelectedRows: '선택 행 삭제',
+      copy: '복사',
+      paste: '붙여넣기',
+      saveAs: '저장',
+    },
+    onchange: function(instance, cell, x, y, value) {
+      // 스프레드시트 편집 시 이익 자동 재계산
+      if (x == 1 || x == 3) { // 수량 또는 원가 변경시
+        const qty = Number(instance.jexcel.getValueFromCoords(1, y)) || 0;
+        const unitCost = Number(instance.jexcel.getValueFromCoords(3, y)) || 0;
+        const settlement = Number(instance.jexcel.getValueFromCoords(2, y)) || 0;
+        const totalCost = unitCost * qty;
+        const profit = settlement - totalCost;
+        const rate = settlement > 0 ? (profit / settlement) * 100 : 0;
+        instance.jexcel.setValueFromCoords(4, y, totalCost, true);
+        instance.jexcel.setValueFromCoords(5, y, profit, true);
+        instance.jexcel.setValueFromCoords(6, y, parseFloat(rate.toFixed(1)), true);
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// EXCELJS STYLED EXPORT
+// ═══════════════════════════════════════════════════════
+async function downloadExcelStyled() {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'iLBiA 매출정산 대시보드';
+  wb.created = new Date();
+  const month = document.getElementById('settlementMonth').value || '정산';
+
+  const headerFill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF0F766E' } };
+  const headerFont = { bold:true, color:{ argb:'FFFFFFFF' }, size:11, name:'맑은 고딕' };
+  const borderStyle = { style:'thin', color:{ argb:'FF334155' } };
+  const borders = { top:borderStyle, left:borderStyle, bottom:borderStyle, right:borderStyle };
+  const numFmt = '#,##0';
+  const rateFmt = '0.0%';
+
+  // 채널별 시트
+  for (const ch of Object.values(state.channels)) {
+    const ws = wb.addWorksheet(ch.name.substring(0,31));
+
+    // 헤더 행
+    const headerRow = ws.addRow(['최종상품명','수량','정산금액','원가/개','원가합계','이익','이익률']);
+    headerRow.eachCell((cell) => {
+      cell.fill = headerFill;
+      cell.font = headerFont;
+      cell.border = borders;
+      cell.alignment = { horizontal:'center', vertical:'middle' };
+    });
+    headerRow.height = 24;
+
+    // 데이터 행
+    let totalSett = 0, totalCost = 0, totalProfit = 0, totalQty = 0;
+    for (const r of ch.aggregated || []) {
+      const row = ws.addRow([
+        r.최종상품명, r.수량, r.정산금액, r.원가단가||0, r.원가합계||0, r.이익||0, r.이익률||0
+      ]);
+      row.getCell(2).numFmt = numFmt;
+      row.getCell(3).numFmt = numFmt;
+      row.getCell(4).numFmt = numFmt;
+      row.getCell(5).numFmt = numFmt;
+      row.getCell(6).numFmt = numFmt;
+      row.getCell(7).numFmt = rateFmt;
+      // 이익 색상
+      if ((r.이익||0) >= 0) {
+        row.getCell(6).font = { color:{ argb:'FF10B981' }, bold:true };
+      } else {
+        row.getCell(6).font = { color:{ argb:'FFEF4444' }, bold:true };
+      }
+      row.eachCell(cell => { cell.border = borders; });
+      totalSett += r.정산금액;
+      totalCost += r.원가합계||0;
+      totalProfit += r.이익||0;
+      totalQty += r.수량;
+    }
+
+    // 합계 행
+    const sumFill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1A1D27' } };
+    const sumFont = { bold:true, size:11, name:'맑은 고딕' };
+    const sumRow = ws.addRow(['합계', totalQty, totalSett, '', totalCost, totalProfit, totalSett > 0 ? totalProfit/totalSett : 0]);
+    sumRow.eachCell((cell) => {
+      cell.fill = sumFill;
+      cell.font = sumFont;
+      cell.border = borders;
+    });
+    sumRow.getCell(2).numFmt = numFmt;
+    sumRow.getCell(3).numFmt = numFmt;
+    sumRow.getCell(5).numFmt = numFmt;
+    sumRow.getCell(6).numFmt = numFmt;
+    sumRow.getCell(7).numFmt = rateFmt;
+
+    // 열 너비
+    ws.columns = [
+      { width:28 }, { width:10 }, { width:16 }, { width:14 }, { width:16 }, { width:16 }, { width:10 }
+    ];
+  }
+
+  // 종합 시트
+  const wsAll = wb.addWorksheet('종합');
+  const allHeader = wsAll.addRow(['최종상품명','수량','정산금액합계','원가합계','이익','이익률']);
+  allHeader.eachCell(cell => {
+    cell.fill = headerFill;
+    cell.font = headerFont;
+    cell.border = borders;
+    cell.alignment = { horizontal:'center', vertical:'middle' };
+  });
+  allHeader.height = 24;
+
+  const allMap = {};
+  for (const ch of Object.values(state.channels)) {
+    for (const r of ch.aggregated || []) {
+      if (!allMap[r.최종상품명]) allMap[r.최종상품명] = { 최종상품명:r.최종상품명, 수량:0, 정산금액:0, 원가합계:0, 이익:0 };
+      allMap[r.최종상품명].수량 += r.수량;
+      allMap[r.최종상품명].정산금액 += r.정산금액;
+      allMap[r.최종상품명].원가합계 += r.원가합계||0;
+      allMap[r.최종상품명].이익 += r.이익||0;
+    }
+  }
+  let gTotal=0, gCost=0, gProfit=0, gQty=0;
+  for (const r of Object.values(allMap).sort((a,b) => b.정산금액-a.정산금액)) {
+    const rate = r.정산금액 > 0 ? r.이익 / r.정산금액 : 0;
+    const row = wsAll.addRow([r.최종상품명, r.수량, r.정산금액, r.원가합계, r.이익, rate]);
+    row.getCell(2).numFmt = numFmt;
+    row.getCell(3).numFmt = numFmt;
+    row.getCell(4).numFmt = numFmt;
+    row.getCell(5).numFmt = numFmt;
+    row.getCell(6).numFmt = rateFmt;
+    if (r.이익 >= 0) {
+      row.getCell(5).font = { color:{ argb:'FF10B981' }, bold:true };
+    } else {
+      row.getCell(5).font = { color:{ argb:'FFEF4444' }, bold:true };
+    }
+    row.eachCell(cell => { cell.border = borders; });
+    gTotal += r.정산금액; gCost += r.원가합계; gProfit += r.이익; gQty += r.수량;
+  }
+  const gSumRow = wsAll.addRow(['합계', gQty, gTotal, gCost, gProfit, gTotal > 0 ? gProfit/gTotal : 0]);
+  const sumFill2 = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1A1D27' } };
+  gSumRow.eachCell(cell => { cell.fill = sumFill2; cell.font = { bold:true }; cell.border = borders; });
+  gSumRow.getCell(2).numFmt = numFmt;
+  gSumRow.getCell(3).numFmt = numFmt;
+  gSumRow.getCell(4).numFmt = numFmt;
+  gSumRow.getCell(5).numFmt = numFmt;
+  gSumRow.getCell(6).numFmt = rateFmt;
+  wsAll.columns = [{ width:28 },{ width:10 },{ width:18 },{ width:16 },{ width:16 },{ width:10 }];
+
+  // 다운로드
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `iLBiA_매출정산_${month}_서식.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('서식 포함 Excel 다운로드 완료!', 'success');
+}
+
+// ═══════════════════════════════════════════════════════
+// EXCEL EXPORT (기본 - SheetJS)
 // ═══════════════════════════════════════════════════════
 function downloadExcel() {
   const wb = XLSX.utils.book_new();
