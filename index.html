@@ -692,7 +692,7 @@ const _k=[98,101,99,111,114,101,108,97,98,48,51,48,57];
 function unlock(){
   const input=document.getElementById('lockInput').value;
   if(input===_k.map(c=>String.fromCharCode(c)).join('')){
-    sessionStorage.setItem('bc_auth','1');
+    localStorage.setItem('bc_auth','1');
     document.getElementById('lockScreen').style.display='none';
     document.getElementById('mainHub').style.display='block';
     initDashboard();
@@ -701,7 +701,7 @@ function unlock(){
     document.getElementById('lockInput').value='';
   }
 }
-if(sessionStorage.getItem('bc_auth')==='1'){
+if(localStorage.getItem('bc_auth')==='1'){
   document.getElementById('lockScreen').style.display='none';
   document.getElementById('mainHub').style.display='block';
 }
@@ -719,7 +719,7 @@ setTimeout(()=>{
   });
 },200);
 }
-if(sessionStorage.getItem('bc_auth')==='1') initDashboard();
+if(localStorage.getItem('bc_auth')==='1') initDashboard();
 </script>
 
 </body>
